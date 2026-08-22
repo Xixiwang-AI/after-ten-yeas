@@ -28,12 +28,9 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 20
-          cache: yarn
 
       - name: Install dependencies
-        run: |
-          corepack enable
-          yarn install --frozen-lockfile
+        run: npm install --no-audit --no-fund
 
       - name: Verify and build
         env:
@@ -41,8 +38,8 @@ jobs:
           VITE_SUPABASE_URL: https://denpkqdmrljzlajumoav.supabase.co
           VITE_SUPABASE_ANON_KEY: sb_publishable_9C4vUf-yxJx4Pn-39S94NQ_MXQOuZO_
         run: |
-          yarn lint
-          yarn build
+          npm run lint
+          npm run build
 
       - name: Configure Pages
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6

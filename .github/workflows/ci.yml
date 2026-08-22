@@ -13,8 +13,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: yarn
-      - run: corepack enable
-      - run: yarn install --frozen-lockfile
-      - run: yarn lint
-      - run: yarn build
+      - run: npm install --no-audit --no-fund
+      - run: npm run lint
+      - run: npm run build
