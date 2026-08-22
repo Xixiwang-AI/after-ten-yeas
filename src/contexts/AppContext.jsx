@@ -1,24 +1,8 @@
 ﻿import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { format } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const AppContext = createContext(null);
-
-// 登录页关闭后仍沿用原登录账号 ID；没有原账号时使用稳定的本地 ID
-function getPersistentUserId() {
-  try {
-    const authUser = JSON.parse(localStorage.getItem("auth_user") || "null");
-    if (authUser?.id) return authUser.id;
-  } catch {
-    // 忽略损坏的旧登录缓存，继续使用本地 ID
-  }
-  let fallbackId = localStorage.getItem("local_fallback_user_id");
-  if (!fallbackId) {
-    fallbackId = String(Date.now());
-    localStorage.setItem("local_fallback_user_id", fallbackId);
-  }
-  return fallbackId;
-}
 
 // 初始示例数据（仅新用户首次注册后写入一次）
 const defaultVisions = [
@@ -44,8 +28,31 @@ const defaultSettings = {
   notifications: { taskDueReminder: true, overtimeReminder: false },
 };
 
-// ===== Supabase 数据读写 =====
-async function loadUserData(userId, key) {
+function scopedStorageKey(userId, key) {
+  return `vision_tracker:${userId}:${key}`;
+}
+
+function readLocalData(userId, key, fallbackValue) {
+  try {
+    const raw = localStorage.getItem(scopedStorageKey(userId, key));
+    return raw ? JSON.parse(raw) : fallbackValue;
+  } catch {
+    return fallbackValue;
+  }
+}
+
+function writeLocalData(userId, key, value) {
+  try {
+    localStorage.setItem(scopedStorageKey(userId, key), JSON.stringify(value));
+    return true;
+  } catch (error) {
+    console.error(`[localStorage] ${key} error:`, error);
+    return false;
+  }
+}
+
+// 云同步只对 Supabase 已认证用户启用。默认使用本机持久化，避免匿名 user_id 造成数据越权。
+async function loadUserData(supabase, userId, key) {
   try {
     const { data, error } = await supabase
       .from("user_data")
@@ -65,7 +72,7 @@ async function loadUserData(userId, key) {
   }
 }
 
-async function saveUserData(userId, key, value) {
+async function saveUserData(supabase, userId, key, value) {
   try {
     const json = JSON.stringify(value);
     const { error } = await supabase
@@ -76,127 +83,112 @@ async function saveUserData(userId, key, value) {
       );
     if (error) {
       console.error(`[saveUserData] upsert ${key} error:`, error.message);
-      // fallback: delete + insert
-      await supabase.from("user_data").delete().eq("user_id", userId).eq("data_key", key);
-      const { error: insertError } = await supabase.from("user_data").insert({
-        user_id: userId, data_key: key, data_value: json,
-        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
-      });
-      if (insertError) {
-        console.error(`[saveUserData] fallback insert ${key} error:`, insertError.message);
-      }
+      return false;
     }
+    return true;
   } catch (e) {
     console.error(`[saveUserData] ${key} exception:`, e);
+    return false;
   }
 }
 
 // ===== AppProvider =====
 export function AppProvider({ children }) {
-  const [userId] = useState(getPersistentUserId);
-
-  const [visions, setVisions] = useState(defaultVisions);
-  const [plans, setPlans] = useState(defaultPlans);
-  const [timeLogs, setTimeLogs] = useState([]);
-  const [settings, setSettings] = useState(defaultSettings);
-  const [activeTimer, setActiveTimer] = useState(null);
-  const [dataLoaded, setDataLoaded] = useState(false);
-  const [dailyPlans, setDailyPlans] = useState({});
-  const [reviewNotes, setReviewNotes] = useState({});
+  const { user } = useAuth();
+  const userId = user.id;
+  const [visions, setVisions] = useState(() => readLocalData(userId, "visions", defaultVisions));
+  const [plans, setPlans] = useState(() => readLocalData(userId, "plans", defaultPlans));
+  const [timeLogs, setTimeLogs] = useState(() => readLocalData(userId, "timeLogs", []));
+  const [settings, setSettings] = useState(() => readLocalData(userId, "settings", defaultSettings));
+  const [activeTimer, setActiveTimer] = useState(() => readLocalData(userId, "activeTimer", null));
+  const [dailyPlans, setDailyPlans] = useState(() => readLocalData(userId, "dailyPlans", {}));
+  const [reviewNotes, setReviewNotes] = useState(() => readLocalData(userId, "reviewNotes", {}));
+  const [dataLoaded] = useState(true);
+  const [syncStatus, setSyncStatus] = useState("local");
 
   // 防抖保存定时器
   const saveTimers = useRef({});
-  // 用 ref 保存 userId，避免 scheduleSave 的 useCallback 依赖变化触发多余 effect
-  const userIdRef = useRef(userId);
-  useEffect(() => { userIdRef.current = userId; }, [userId]);
+  const cloudRef = useRef(null);
+  const initialValuesRef = useRef({ visions, plans, timeLogs, settings, dailyPlans, reviewNotes });
 
-  // ===== 从 Supabase 加载数据 =====
+  // 主题在首次渲染后立即恢复，而不是等用户再次切换开关。
   useEffect(() => {
-    if (!userId) {
-      setDataLoaded(false);
-      return;
-    }
-    setDataLoaded(false);
+    document.documentElement.classList.toggle("dark", settings.theme === "dark");
+  }, [settings.theme]);
+
+  // 登录后从属于当前用户的记录恢复数据；RLS 会在数据库侧再次校验 user_id。
+  useEffect(() => {
+    let cancelled = false;
 
     (async () => {
+      setSyncStatus("connecting");
+      const { supabase } = await import("@/integrations/supabase/client");
+
       const [v, p, t, s, dp, rn] = await Promise.all([
-        loadUserData(userId, "visions"),
-        loadUserData(userId, "plans"),
-        loadUserData(userId, "timeLogs"),
-        loadUserData(userId, "settings"),
-        loadUserData(userId, "dailyPlans"),
-        loadUserData(userId, "reviewNotes"),
+        loadUserData(supabase, userId, "visions"),
+        loadUserData(supabase, userId, "plans"),
+        loadUserData(supabase, userId, "timeLogs"),
+        loadUserData(supabase, userId, "settings"),
+        loadUserData(supabase, userId, "dailyPlans"),
+        loadUserData(supabase, userId, "reviewNotes"),
       ]);
-
-      // undefined = 加载失败（网络错误），保持当前 state 不动，不覆盖
-      // null = 数据库中无记录（新用户），写入默认值
-      // 有值 = 正常加载，使用数据库值
-
-      let isNewUser = false;
-
-      if (v === null) {
-        // 新用户，写入默认愿景
-        setVisions(defaultVisions);
-        saveUserData(userId, "visions", defaultVisions);
-        isNewUser = true;
-      } else if (v !== undefined) {
-        setVisions(v);
-      }
-      // v === undefined（加载失败）：不 setVisions，保持当前值
-
-      if (p === null) {
-        setPlans(defaultPlans);
-        if (isNewUser) saveUserData(userId, "plans", defaultPlans);
-      } else if (p !== undefined) {
-        setPlans(p);
+      if (cancelled) return;
+      if ([v, p, t, s, dp, rn].some(value => value === undefined)) {
+        setSyncStatus("error");
+        return;
       }
 
-      if (t === null) {
-        setTimeLogs([]);
-      } else if (t !== undefined) {
-        setTimeLogs(t);
-      }
+      cloudRef.current = { supabase, userId };
+      if (v !== null) setVisions(v);
+      if (p !== null) setPlans(p);
+      if (t !== null) setTimeLogs(t);
+      if (s !== null) setSettings(s);
+      if (dp !== null) setDailyPlans(dp);
+      if (rn !== null) setReviewNotes(rn);
 
-      if (s === null) {
-        setSettings(defaultSettings);
-      } else if (s !== undefined) {
-        setSettings(s);
+      const remoteValues = { visions: v, plans: p, timeLogs: t, settings: s, dailyPlans: dp, reviewNotes: rn };
+      const seedResults = await Promise.all(
+        Object.entries(remoteValues)
+          .filter(([, value]) => value === null)
+          .map(([key]) => saveUserData(supabase, userId, key, initialValuesRef.current[key])),
+      );
+      if (cancelled) return;
+      if (seedResults.some((ok) => !ok)) {
+        setSyncStatus("error");
+        return;
       }
+      setSyncStatus("synced");
+    })().catch((error) => {
+      console.error("[cloudSync] init error:", error);
+      if (!cancelled) setSyncStatus("error");
+    });
 
-      if (dp === null) {
-        setDailyPlans({});
-      } else if (dp !== undefined) {
-        setDailyPlans(dp);
-      }
-
-      if (rn === null) {
-        setReviewNotes({});
-      } else if (rn !== undefined) {
-        setReviewNotes(rn);
-      }
-
-      setDataLoaded(true);
-    })();
+    return () => { cancelled = true; };
   }, [userId]);
 
-  // ===== 防抖同步到 Supabase（500ms 延迟合并写入）=====
-  // 使用 userIdRef 避免 userId 变化时重建函数，进而触发所有 save effect
+  // 所有变更先可靠写入本机；已认证且成功完成远端读取后才允许云端写入。
   const scheduleSave = useCallback((key, value) => {
-    if (!userIdRef.current) return;
+    writeLocalData(userId, key, value);
+    const cloud = cloudRef.current;
+    if (!cloud) {
+      setSyncStatus("local");
+      return;
+    }
     if (saveTimers.current[key]) clearTimeout(saveTimers.current[key]);
-    saveTimers.current[key] = setTimeout(() => {
-      if (userIdRef.current) {
-        saveUserData(userIdRef.current, key, value);
-      }
+    setSyncStatus("saving");
+    saveTimers.current[key] = setTimeout(async () => {
+      const ok = await saveUserData(cloud.supabase, cloud.userId, key, value);
+      setSyncStatus(ok ? "synced" : "error");
     }, 500);
-  }, []); // 无依赖，函数永远不重建
+  }, [userId]);
 
-  useEffect(() => { if (dataLoaded) scheduleSave("visions", visions); }, [visions, dataLoaded]);
-  useEffect(() => { if (dataLoaded) scheduleSave("plans", plans); }, [plans, dataLoaded]);
-  useEffect(() => { if (dataLoaded) scheduleSave("timeLogs", timeLogs); }, [timeLogs, dataLoaded]);
-  useEffect(() => { if (dataLoaded) scheduleSave("settings", settings); }, [settings, dataLoaded]);
-  useEffect(() => { if (dataLoaded) scheduleSave("dailyPlans", dailyPlans); }, [dailyPlans, dataLoaded]);
-  useEffect(() => { if (dataLoaded) scheduleSave("reviewNotes", reviewNotes); }, [reviewNotes, dataLoaded]);
+  useEffect(() => { scheduleSave("visions", visions); }, [visions, scheduleSave]);
+  useEffect(() => { scheduleSave("plans", plans); }, [plans, scheduleSave]);
+  useEffect(() => { scheduleSave("timeLogs", timeLogs); }, [timeLogs, scheduleSave]);
+  useEffect(() => { scheduleSave("settings", settings); }, [settings, scheduleSave]);
+  useEffect(() => { scheduleSave("dailyPlans", dailyPlans); }, [dailyPlans, scheduleSave]);
+  useEffect(() => { scheduleSave("reviewNotes", reviewNotes); }, [reviewNotes, scheduleSave]);
+  useEffect(() => { scheduleSave("activeTimer", activeTimer); }, [activeTimer, scheduleSave]);
 
   // ===== Vision CRUD =====
   const addVision = useCallback((visionData) => {
@@ -431,7 +423,7 @@ export function AppProvider({ children }) {
     getTodayLogs, getTodayTotalSeconds, getLogsForDate,
     dailyPlans, getDailyPlansForDate, addDailyPlanItem, updateDailyPlanItem, toggleDailyPlanItem, removeDailyPlanItem,
     reviewNotes, updateReviewNote, getReviewNote,
-    dataLoaded,
+    dataLoaded, syncStatus, storagePrefix: `vision_tracker:${userId}:`,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

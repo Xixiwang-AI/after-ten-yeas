@@ -24,12 +24,12 @@ export default function Analytics() {
   const { plans, timeLogs, getPlanCompletionRate } = useApp();
   const [range, setRange] = useState("month");
 
-  const now = new Date();
+  const now = useMemo(() => new Date(), []);
   const rangeStart = useMemo(() => {
     if (range === "week") return format(subDays(now, 7), "yyyy-MM-dd");
     if (range === "month") return format(subMonths(now, 1), "yyyy-MM-dd");
     return format(subYears(now, 1), "yyyy-MM-dd");
-  }, [range]);
+  }, [range, now]);
 
   const filteredLogs = useMemo(() => {
     return timeLogs.filter(l => l.date >= rangeStart);
@@ -76,7 +76,7 @@ export default function Analytics() {
       result.push({ label, hours });
     }
     return result;
-  }, [timeLogs, range]);
+  }, [timeLogs, range, now]);
 
   // Plan completion trend (by plan)
   const planCompletionData = useMemo(() => {

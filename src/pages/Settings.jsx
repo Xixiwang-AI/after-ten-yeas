@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export default function Settings() {
-  const { settings, updateSettings, plans, visions, timeLogs } = useApp();
+  const { settings, updateSettings, plans, visions, timeLogs, storagePrefix } = useApp();
   const [newTag, setNewTag] = useState("");
   const [addingTag, setAddingTag] = useState(false);
   const [showClearDialog, setShowClearDialog] = useState(false);
@@ -84,9 +84,10 @@ export default function Settings() {
     reader.onload = (ev) => {
       try {
         const data = JSON.parse(ev.target?.result);
-        if (data.visions) localStorage.setItem("visions", JSON.stringify(data.visions));
-        if (data.plans) localStorage.setItem("plans", JSON.stringify(data.plans));
-        if (data.timeLogs) localStorage.setItem("timeLogs", JSON.stringify(data.timeLogs));
+        if (data.visions) localStorage.setItem(`${storagePrefix}visions`, JSON.stringify(data.visions));
+        if (data.plans) localStorage.setItem(`${storagePrefix}plans`, JSON.stringify(data.plans));
+        if (data.timeLogs) localStorage.setItem(`${storagePrefix}timeLogs`, JSON.stringify(data.timeLogs));
+        if (data.settings) localStorage.setItem(`${storagePrefix}settings`, JSON.stringify(data.settings));
         toast.success("数据已恢复，刷新页面生效");
         setTimeout(() => window.location.reload(), 1500);
       } catch {

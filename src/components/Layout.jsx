@@ -1,13 +1,15 @@
-﻿import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   LayoutDashboard, Target, ListTodo, Clock,
   BarChart2, CalendarCheck, Settings, ChevronDown, ChevronRight,
-  Menu, X, Zap, User,
+  LogOut, Menu, X, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useApp } from "@/contexts/AppContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { ActiveTimerBadge } from "./ActiveTimerBadge";
+import { toast } from "sonner";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -29,19 +31,37 @@ export default function Layout({ children }) {
   const location = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { activeTimer } = useApp();
-  const currentUser = { username: "本地用户" };
+  const { activeTimer, syncStatus } = useApp();
+  const { user, profile, signOut } = useAuth();
+  const displayName = profile?.display_name || user?.email?.split("@")[0] || "用户";
 
   const isActive = (to) => location.pathname === to;
   const isMoreActive = moreNav.some(n => isActive(n.to));
+  const syncLabel = {
+    local: "本机安全保存",
+    connecting: "正在连接云端",
+    saving: "正在保存",
+    synced: "已同步",
+    error: "云同步失败 · 已存本机",
+  }[syncStatus] || "本机安全保存";
+
+  useEffect(() => {
+    if (isMoreActive) setMoreOpen(true);
+  }, [isMoreActive]);
 
   // 取用户名首字作为头像字母
-  const avatarLetter = currentUser?.username?.[0]?.toUpperCase() || "U";
+  const avatarLetter = displayName[0]?.toUpperCase() || "U";
+
+  const handleSignOut = async () => {
+    const result = await signOut();
+    if (!result.success) toast.error(result.error);
+  };
 
   const NavItem = ({ to, label, icon: Icon, onClick }) => (
     <Link
       to={to}
       onClick={() => { setSidebarOpen(false); onClick?.(); }}
+      aria-current={isActive(to) ? "page" : undefined}
       className={cn(
         "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
         isActive(to)
@@ -62,15 +82,23 @@ export default function Layout({ children }) {
             {avatarLetter}
           </div>
           <div className="flex-1 text-left min-w-0">
-            <div className="text-xs font-medium text-slate-700 truncate">{currentUser?.username}</div>
-            <div className="text-xs text-slate-400">已登录</div>
+            <div className="text-xs font-medium text-slate-700 truncate">{displayName}</div>
+            <div className="text-xs text-slate-400">{syncLabel}</div>
           </div>
         </button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-44">
+      <DropdownMenuContent align="start" className="w-56">
         <div className="px-2 py-1.5">
-          <div className="text-xs font-semibold text-slate-700">{currentUser?.username}</div>
+          <div className="text-sm font-semibold text-slate-700">{displayName}</div>
+          <div className="mt-0.5 truncate text-xs text-slate-400">{user?.email}</div>
         </div>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/settings">账号与设置</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={handleSignOut} className="text-red-600 focus:text-red-600">
+          <LogOut className="mr-2 h-4 w-4" />退出登录
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -147,7 +175,8 @@ export default function Layout({ children }) {
           <aside className="relative flex flex-col w-64 bg-white dark:bg-slate-800 shadow-xl z-50">
             <button
               onClick={() => setSidebarOpen(false)}
-              className="absolute top-4 right-4 p-1 rounded-md hover:bg-slate-100"
+              aria-label="关闭导航菜单"
+              className="absolute top-3 right-3 w-11 h-11 flex items-center justify-center rounded-lg hover:bg-slate-100"
             >
               <X className="w-4 h-4" />
             </button>
@@ -159,8 +188,8 @@ export default function Layout({ children }) {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Mobile Top Bar */}
-        <header className="lg:hidden flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700">
-          <button onClick={() => setSidebarOpen(true)} className="p-1.5 rounded-md hover:bg-slate-100">
+        <header className="lg:hidden sticky top-0 z-30 flex items-center justify-between px-4 py-2 bg-white/95 backdrop-blur dark:bg-slate-800/95 border-b border-slate-200 dark:border-slate-700">
+          <button onClick={() => setSidebarOpen(true)} aria-label="打开导航菜单" className="w-11 h-11 flex items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700">
             <Menu className="w-5 h-5" />
           </button>
           <div className="flex items-center gap-2">
@@ -172,14 +201,20 @@ export default function Layout({ children }) {
           {/* Mobile user avatar */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+              <button aria-label="打开用户菜单" className="w-11 h-11 bg-indigo-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
                 {avatarLetter}
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuContent align="end" className="w-56">
               <div className="px-2 py-1.5">
-                <div className="text-xs font-semibold text-slate-700">{currentUser?.username}</div>
+                <div className="text-sm font-semibold text-slate-700">{displayName}</div>
+                <div className="mt-0.5 truncate text-xs text-slate-400">{user?.email}</div>
               </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild><Link to="/settings">账号与设置</Link></DropdownMenuItem>
+              <DropdownMenuItem onClick={handleSignOut} className="text-red-600 focus:text-red-600">
+                <LogOut className="mr-2 h-4 w-4" />退出登录
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </header>

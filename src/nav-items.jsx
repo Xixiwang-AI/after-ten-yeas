@@ -1,13 +1,14 @@
-﻿import {
+import { lazy } from "react";
+import {
   LayoutDashboard, Target, ListTodo, Clock, CalendarCheck, BarChart2, Settings,
 } from "lucide-react";
-import Dashboard from "./pages/Dashboard.jsx";
-import VisionCenter from "./pages/VisionCenter.jsx";
-import PlanManagement from "./pages/PlanManagement.jsx";
-import TimeLog from "./pages/TimeLog.jsx";
-import DailyReview from "./pages/DailyReview.jsx";
-import Analytics from "./pages/Analytics.jsx";
-import SettingsPage from "./pages/Settings.jsx";
+const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
+const VisionCenter = lazy(() => import("./pages/VisionCenter.jsx"));
+const PlanManagement = lazy(() => import("./pages/PlanManagement.jsx"));
+const TimeLog = lazy(() => import("./pages/TimeLog.jsx"));
+const DailyReview = lazy(() => import("./pages/DailyReview.jsx"));
+const Analytics = lazy(() => import("./pages/Analytics.jsx"));
+const SettingsPage = lazy(() => import("./pages/Settings.jsx"));
 
 /**
  * Central place for defining the navigation items. Used for navigation components and routing.

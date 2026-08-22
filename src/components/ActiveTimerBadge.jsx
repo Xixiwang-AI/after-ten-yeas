@@ -35,13 +35,15 @@ export function ActiveTimerBadge() {
         <div className="flex gap-1">
           <button
             onClick={activeTimer.paused ? resumeTimer : pauseTimer}
-            className="p-1 bg-indigo-500 hover:bg-indigo-400 rounded"
+            aria-label={activeTimer.paused ? "继续计时" : "暂停计时"}
+            className="w-9 h-9 flex items-center justify-center bg-indigo-500 hover:bg-indigo-400 rounded-lg"
           >
             {activeTimer.paused ? <Play className="w-3 h-3" /> : <Pause className="w-3 h-3" />}
           </button>
           <button
             onClick={() => stopTimer()}
-            className="p-1 bg-red-500 hover:bg-red-400 rounded"
+            aria-label="完成计时"
+            className="w-9 h-9 flex items-center justify-center bg-red-500 hover:bg-red-400 rounded-lg"
           >
             <Square className="w-3 h-3" />
           </button>

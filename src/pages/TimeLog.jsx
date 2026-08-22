@@ -1988,15 +1988,20 @@ export default function TimeLog() {
     }
   };
   return (
-    <div className='p-4 md:p-6 max-w-6xl mx-auto space-y-4'>
+    <div className='p-4 pb-24 md:p-6 max-w-6xl mx-auto space-y-4'>
       {/* Header */}
-      <div className='flex items-center justify-between'>
+      <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3'>
         <div>
           <h1 className='text-xl font-bold text-slate-800'>时间日志</h1>
-          <p className='text-sm text-slate-500 mt-0.5'>双击行空白处创建色块 · 双击色块编辑文字 · 左右拖拽边缘调整时长 · 拖拽主体移动位置</p>
+          <p className='hidden md:block text-sm text-slate-500 mt-0.5'>双击空白创建记录 · 拖拽色块调整时间 · 点击记录精确编辑</p>
+          <p className='md:hidden text-sm text-slate-500 mt-0.5'>选择日期，点击记录即可查看或编辑</p>
         </div>
-        <div className='flex gap-2'>
-          <Button size='sm' onClick={() => (activeTimer ? setShowTimer(true) : null)} className={cn('gap-1.5 text-white', activeTimer ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700')}>
+        <div className='flex gap-2 w-full sm:w-auto'>
+          <Button
+            size='sm'
+            onClick={() => activeTimer ? setShowTimer(true) : document.getElementById('quick-timer')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+            className={cn('w-full sm:w-auto min-h-11 sm:min-h-9 gap-1.5 text-white', activeTimer ? 'bg-green-600 hover:bg-green-700' : 'bg-indigo-600 hover:bg-indigo-700')}
+          >
             <Timer className='w-3.5 h-3.5' />
             {activeTimer ? '查看计时' : '开始计时'}
           </Button>
@@ -2005,12 +2010,12 @@ export default function TimeLog() {
 
       {/* 快速计时 */}
       {!activeTimer && (
-        <Card>
+        <Card id='quick-timer'>
           <CardContent className='pt-3 pb-3'>
-            <div className='flex gap-2 items-center'>
+            <div className='flex flex-col sm:flex-row gap-2 sm:items-center'>
               <div className='flex-1'>
                 <Select value={startModuleId} onValueChange={setStartModuleId}>
-                  <SelectTrigger className='h-9'>
+                  <SelectTrigger className='h-11 sm:h-9'>
                     <SelectValue placeholder='选择模块开始计时...' />
                   </SelectTrigger>
                   <SelectContent>
@@ -2031,7 +2036,7 @@ export default function TimeLog() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={handleStartTimer} disabled={!startModuleId} className='bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 h-9 flex-shrink-0'>
+              <Button onClick={handleStartTimer} disabled={!startModuleId} className='w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white gap-1.5 h-11 sm:h-9 flex-shrink-0'>
                 <Play className='w-4 h-4' /> 开始
               </Button>
             </div>
@@ -2042,7 +2047,7 @@ export default function TimeLog() {
       {/* 纵向时间轴 */}
       <div>
         <div className='flex items-center justify-between mb-2'>
-          <button onClick={() => setWeekOffset((v) => v - 1)} className='p-1.5 rounded-lg hover:bg-slate-100'>
+          <button onClick={() => setWeekOffset((v) => v - 1)} aria-label='上一周' className='w-11 h-11 flex items-center justify-center rounded-lg hover:bg-slate-100'>
             <ChevronLeft className='w-4 h-4' />
           </button>
           <div className='flex items-center gap-3'>
@@ -2053,13 +2058,13 @@ export default function TimeLog() {
               </button>
             )}
           </div>
-          <button onClick={() => setWeekOffset((v) => v + 1)} className='p-1.5 rounded-lg hover:bg-slate-100'>
+          <button onClick={() => setWeekOffset((v) => v + 1)} aria-label='下一周' className='w-11 h-11 flex items-center justify-center rounded-lg hover:bg-slate-100'>
             <ChevronRight className='w-4 h-4' />
           </button>
         </div>
 
         {/* 本周7天快速切换 */}
-        <div className='flex items-center justify-center gap-1.5 mb-3'>
+        <div className='grid grid-cols-7 gap-1 sm:gap-1.5 mb-3'>
           {Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)).map((day) => {
             const ds = format(day, 'yyyy-MM-dd');
             const isSel = ds === selectedDate;
@@ -2069,7 +2074,7 @@ export default function TimeLog() {
                 key={ds}
                 onClick={() => setSelectedDate(ds)}
                 className={cn(
-                  'flex flex-col items-center justify-center w-11 h-12 rounded-xl transition-all',
+                  'flex flex-col items-center justify-center w-full h-12 rounded-xl transition-all',
                   isSel ? 'bg-indigo-600 text-white shadow-sm' : isTod ? 'bg-indigo-50 text-indigo-600' : 'hover:bg-slate-100 text-slate-500',
                 )}
               >
@@ -2080,7 +2085,57 @@ export default function TimeLog() {
           })}
         </div>
 
-<div className='text-xs text-slate-400 text-center mb-1.5 flex items-center justify-center gap-4 flex-wrap'>
+        {/* 手机端采用可点击的当日列表，避免依赖双击、鼠标拖拽和 Delete 键。 */}
+        <Card className='md:hidden'>
+          <CardHeader className='pb-2'>
+            <div className='flex items-center justify-between gap-3'>
+              <div>
+                <CardTitle className='text-sm'>{format(new Date(`${selectedDate}T00:00:00`), 'M月d日 EEEE', { locale: zhCN })}</CardTitle>
+                <p className='text-xs text-slate-400 mt-1'>{dayLogs.length} 条记录 · 共 {formatDuration(totalSeconds)}</p>
+              </div>
+              <Button
+                size='sm'
+                variant='outline'
+                className='min-h-11 gap-1.5 text-indigo-600'
+                onClick={() => setLogDialog({ open: true, data: { date: selectedDate, startTime: format(new Date(), 'HH:mm') } })}
+              >
+                <Plus className='w-4 h-4' /> 手动补记
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className='space-y-2'>
+            {dayLogs.length === 0 ? (
+              <div className='py-8 text-center'>
+                <Clock className='w-8 h-8 mx-auto text-slate-200' />
+                <p className='text-sm text-slate-500 mt-2'>这一天还没有专注记录</p>
+                <p className='text-xs text-slate-400 mt-1'>开始计时，或手动补记已经完成的事情</p>
+              </div>
+            ) : (
+              [...dayLogs]
+                .sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')))
+                .map((log) => {
+                  const hex = planColorMap[log.planId] || getHex('indigo');
+                  return (
+                    <button
+                      key={log.id}
+                      onClick={() => handleClickLog(log)}
+                      className='w-full min-h-14 flex items-center gap-3 rounded-xl border border-slate-100 bg-white px-3 py-2.5 text-left hover:border-indigo-200 hover:bg-indigo-50/40'
+                    >
+                      <span className='w-1 self-stretch rounded-full flex-shrink-0' style={{ backgroundColor: hex.bg }} />
+                      <span className='min-w-0 flex-1'>
+                        <span className='block text-sm font-medium text-slate-800 truncate'>{log.moduleName || '未命名记录'}</span>
+                        <span className='block text-xs text-slate-400 mt-0.5'>{formatTime(log.startTime)} – {formatTime(log.endTime)}</span>
+                      </span>
+                      <span className='text-xs font-medium flex-shrink-0' style={{ color: hex.text }}>{formatDuration(log.duration)}</span>
+                      <ChevronRight className='w-4 h-4 text-slate-300 flex-shrink-0' />
+                    </button>
+                  );
+                })
+            )}
+          </CardContent>
+        </Card>
+
+<div className='hidden md:flex text-xs text-slate-400 text-center mb-1.5 items-center justify-center gap-4 flex-wrap'>
 <span>双击空白 → 创建色块</span>
 <span>点击色块文字 → 直接输入名称</span>
 <span>点击"编辑"按钮 → 精确设置时间/计划</span>
@@ -2088,7 +2143,9 @@ export default function TimeLog() {
 <span>拖拽色块 → 移动时间（可跨天拖到其他日期）</span>
 <span>选中后按 Delete → 删除</span>
         </div>
-        <VWeekTimeline weekStart={weekStart} timeLogs={timeLogs} plans={plans} visions={visions} onAddLog={handleAddLog} onUpdateLog={handleUpdateLog} onDeleteLog={deleteTimeLog} />
+        <div className='hidden md:block'>
+          <VWeekTimeline weekStart={weekStart} timeLogs={timeLogs} plans={plans} visions={visions} onAddLog={handleAddLog} onUpdateLog={handleUpdateLog} onDeleteLog={deleteTimeLog} />
+        </div>
       </div>
 
       {/* 当日计划 + 当日复盘 */}

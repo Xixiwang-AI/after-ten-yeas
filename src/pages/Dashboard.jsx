@@ -1,13 +1,13 @@
 ﻿import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { format, subDays, parseISO, eachDayOfInterval, addDays } from "date-fns";
+import { format, subDays, parseISO, addDays } from "date-fns";
 import { zhCN } from "date-fns/locale";
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from "recharts";
 import {
   Clock, Target, ListTodo, TrendingUp, Play, ChevronRight, CheckCircle2, Circle, Zap,
-  Download, FileDown, Calendar, X, ChevronLeft,
+  Download, FileDown, Calendar, ChevronLeft,
 } from "lucide-react";
 import { useApp } from "@/contexts/AppContext";
 import { Progress } from "@/components/ui/progress";
@@ -17,14 +17,14 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useNavigate } from "react-router-dom";
-import { getVisionColor } from "./VisionCenter";
+import { getVisionColor } from "@/lib/vision-colors";
 import { cn } from "@/lib/utils";
 
 const COLORS = ["#6366f1", "#8b5cf6", "#06b6d4", "#10b981", "#f59e0b", "#ef4444"];
 
 export default function Dashboard() {
   const {
-    plans, visions, timeLogs, getTodayLogs, getTodayTotalSeconds,
+    plans, visions, timeLogs,
     getPlanCompletionRate, getVisionCompletionRate, getAllModules, startTimer,
     getDailyPlansForDate, getLogsForDate,
   } = useApp();
@@ -41,7 +41,7 @@ export default function Dashboard() {
   };
 
   // 选中日期的时间记录
-  const dayLogs = useMemo(() => getLogsForDate(selectedDate), [selectedDate, timeLogs]);
+  const dayLogs = useMemo(() => getLogsForDate(selectedDate), [selectedDate, getLogsForDate]);
   const daySeconds = dayLogs.reduce((s, l) => s + (l.duration || 0), 0);
   const dayHours = (daySeconds / 3600).toFixed(1);
 
@@ -50,10 +50,6 @@ export default function Dashboard() {
   const dayPlanTotal = dayDailyPlans.length;
   const dayPlanDone = dayDailyPlans.filter(p => p.done).length;
   const todayCompletionPct = dayPlanTotal > 0 ? Math.round((dayPlanDone / dayPlanTotal) * 100) : 0;
-
-  // 兼容旧的 todayLogs / todaySeconds（用于其他地方）
-  const todayLogs = getTodayLogs();
-  const todaySeconds = getTodayTotalSeconds();
 
   // 时间分配饼图（选中日期）
   const pieData = useMemo(() => {
@@ -215,17 +211,17 @@ export default function Dashboard() {
   return (
     <div className="p-4 md:p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">
             {isToday ? format(new Date(), "M月d日 EEEE", { locale: zhCN }) + " · 今日看板" : format(new Date(selectedDate + "T00:00:00"), "M月d日 EEEE", { locale: zhCN }) + " · 历史看板"}
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">专注当下，每一刻都值得记录</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
           {/* 日期切换 */}
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl px-1 py-1">
-            <button onClick={() => shiftDate(-1)} className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 transition-all">
+          <div className="col-span-2 sm:col-auto flex items-center justify-between sm:justify-start gap-1 bg-white border border-slate-200 rounded-xl px-1 py-1 min-h-11">
+            <button onClick={() => shiftDate(-1)} aria-label="前一天" className="w-10 h-10 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 transition-all">
               <ChevronLeft className="w-4 h-4" />
             </button>
             <input
@@ -238,7 +234,8 @@ export default function Dashboard() {
             <button
               onClick={() => shiftDate(1)}
               disabled={selectedDate >= today}
-              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              aria-label="后一天"
+              className="w-10 h-10 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-500 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -248,11 +245,11 @@ export default function Dashboard() {
               </button>
             )}
           </div>
-          <Button variant="outline" className="gap-2 text-slate-600" onClick={() => setExportOpen(true)}>
+          <Button variant="outline" className="w-full sm:w-auto gap-2 text-slate-600" onClick={() => setExportOpen(true)}>
             <Download className="w-4 h-4" />
             下载数据
           </Button>
-          <Button onClick={() => navigate("/timelog")} className="bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
+          <Button onClick={() => navigate("/timelog")} className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white gap-2">
             <Play className="w-4 h-4" />
             开始计时
           </Button>
@@ -279,9 +276,9 @@ export default function Dashboard() {
           </div>
           <Progress value={todayCompletionPct} className="h-3" />
           {dayPlanTotal === 0 && (
-            <div className="mt-2 text-xs text-slate-400 flex items-center gap-1.5">
-              <Circle className="w-3.5 h-3.5" /> 前往时间日志页面添加当日计划
-            </div>
+            <Link to="/timelog" className="mt-2 text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1.5 w-fit">
+              <Circle className="w-3.5 h-3.5" /> 添加今天的第一项计划 <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
           )}
           {todayCompletionPct >= 80 && dayPlanTotal > 0 && (
             <div className="mt-2 flex items-center gap-2 text-emerald-600 text-sm">
