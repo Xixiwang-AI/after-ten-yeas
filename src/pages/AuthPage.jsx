@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 export default function AuthPage() {
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, resendConfirmation } = useAuth();
   const [mode, setMode] = useState("login");
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -50,10 +50,22 @@ export default function AuthPage() {
       return;
     }
     if (result.requiresEmailConfirmation) {
-      setSuccess("验证邮件已发送，请完成验证后返回登录");
+      setSuccess("验证邮件已发送，请完成验证后返回登录。如果没有收到，可以重新发送。");
       setPassword("");
       setConfirmPassword("");
     }
+  };
+
+  const handleResend = async () => {
+    setLoading(true);
+    setError("");
+    const result = await resendConfirmation(email);
+    setLoading(false);
+    if (!result.success) {
+      setError(result.error);
+      return;
+    }
+    setSuccess("新的验证邮件已发送，请检查收件箱和垃圾邮件");
   };
 
   return (
@@ -185,6 +197,12 @@ export default function AuthPage() {
 
               {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700">{error}</div>}
               {success && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700">{success}</div>}
+
+              {mode === "register" && success && (
+                <Button type="button" variant="outline" disabled={loading} onClick={handleResend} className="h-10 w-full">
+                  重新发送验证邮件
+                </Button>
+              )}
 
               <Button type="submit" disabled={loading} className="h-11 w-full gap-2 bg-indigo-600 text-white hover:bg-indigo-700">
                 {loading ? <><Loader2 className="h-4 w-4 animate-spin" />正在处理</> : <>{mode === "login" ? "登录" : "创建账号"}<ArrowRight className="h-4 w-4" /></>}

@@ -30,6 +30,10 @@ function authErrorMessage(error) {
   return error?.message || "连接认证服务失败，请稍后重试";
 }
 
+function emailRedirectUrl() {
+  return new URL(import.meta.env.BASE_URL, window.location.origin).toString();
+}
+
 async function loadProfile(user) {
   if (!user) return null;
   const { data, error } = await supabase
@@ -123,10 +127,15 @@ export function AuthProvider({ children }) {
       password,
       options: {
         data: { display_name: name },
-        emailRedirectTo: new URL(import.meta.env.BASE_URL, window.location.origin).toString(),
+        emailRedirectTo: emailRedirectUrl(),
       },
     });
     if (error) return { success: false, error: authErrorMessage(error) };
+
+    // 已注册邮箱会返回混淆后的用户对象，实际不会再次发送邮件。
+    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+      return { success: false, error: "这个邮箱已经注册，请切换到登录" };
+    }
 
     if (data.user && data.session) {
       await supabase.from("profiles").upsert({
@@ -145,6 +154,19 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  const resendConfirmation = useCallback(async (email) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) return { success: false, error: "请先输入注册邮箱" };
+
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: normalizedEmail,
+      options: { emailRedirectTo: emailRedirectUrl() },
+    });
+    if (error) return { success: false, error: authErrorMessage(error) };
+    return { success: true };
+  }, []);
+
   const signOut = useCallback(async () => {
     const { error } = await supabase.auth.signOut();
     if (error) return { success: false, error: authErrorMessage(error) };
@@ -152,8 +174,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const value = useMemo(
-    () => ({ user, profile, loading, signIn, signUp, signOut }),
-    [user, profile, loading, signIn, signUp, signOut],
+    () => ({ user, profile, loading, signIn, signUp, resendConfirmation, signOut }),
+    [user, profile, loading, signIn, signUp, resendConfirmation, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
